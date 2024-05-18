@@ -1,0 +1,17 @@
+{
+  "name": "scratch",
+  "version": "1.0.0",
+  "description": "",
+  "main": "send_mock_sensor_data.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node send_mock_sensor_data.js",
+    "install": "npm install ws"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.17.0"
+  }
+}
+
