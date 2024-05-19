@@ -1,36 +1,69 @@
+const fs = require('fs');
+const ffmpeg = require('ffmpeg');
+const sharp = require('sharp');
 const WebSocket = require('ws');
+const pth = require('path');
+const child_process = require('child_process');
 
-// Create a WebSocket connection to your server
 const ws = new WebSocket('ws://localhost:8999');
 
-ws.on('message', function open() {
-  // Define the function to send mock sensor data
-  const sendMockSensorData = () => {
-    // Generar un valor de temperatura aleatorio entre 20 y 30
-    const randomTemperature = (Math.random() * (30 - 20) + 20).toFixed(2);
-    const randomHumidity = (Math.random() * (60 - 20) + 20).toFixed(2);
+const videoDir = './video';
+const firstVideoFile = fs.readdirSync(videoDir).find(file => pth.extname(file) === '.mp4');
+const path = pth.join(videoDir, firstVideoFile);
+const outputTo = 'images';
+const fps = 30;
 
-    // Mock sensor data
-    const mockSensorData = "temp=" + randomTemperature + ",hum=" + randomHumidity + ",light=12;state:ON_BOARD_LED_1=1";
-    /*const mockSensorData = {
-      operation: 'function',
-      command: {
-        recipient: 'sensorId1',
-        message: {
-          key: 'temp',
-          value: randomTemperature
+let images = [];
+
+const extractImages = () => {
+    return new Promise((resolve, reject) => {
+        try {
+            new ffmpeg(path, function (err, video) {
+                if (!err) {
+                    video.fnExtractFrameToJPG(outputTo, {
+                        every_n_frames: fps,
+                        file_name: 'image_%t_%s'
+                    }, function (error, files) {
+                        if (error) {
+                            reject(error);
+                        } else {
+                            images = files;
+                            resolve();
+                        }
+                    });
+                } else {
+                    reject(err);
+                }
+            });
+        } catch (err) {
+            reject(err);
         }
-      }
-    };*/
+    });
+};
 
-    // Send the mock sensor data to the server
-    ws.send(JSON.stringify(mockSensorData));
-  };
+const sendImages = () => {
+    let index = 0;
+    setInterval(() => {
+        if (index >= images.length) {
+            index = 0; // Reset index to start
+        }
+        const file = images[index];
+        const data = fs.readFileSync(file);
+        ws.send(data);
+        index++;
+    }, 2000); // Send an image every 2 seconds
+};
 
-  // Call the function every 2 seconds
-  setInterval(sendMockSensorData, 2000);
+ws.on('open', async () => {
+    await extractImages();
+    sendImages();
 });
 
 ws.on('error', function error(err) {
-  console.error('WebSocket error:', err);
+    console.error('WebSocket error:', err);
+});
+
+process.on('SIGINT', () => {
+    child_process.execSync('node on_server_shutdown.js');
+    process.exit();
 });
