@@ -56,9 +56,32 @@ const sendImages = () => {
   }, 1000 / fps);
 };
 
+const sendTemperatureAndHumidity = () => {
+  setInterval(() => {
+    const sensorData = {
+      sensorId: "mockSensorId", // Replace with actual sensor ID if available
+      timestamp: new Date(),
+      temp: (Math.random() * 10 + 20).toFixed(2), // Random temperature between 20 and 30
+      hum: (Math.random() * 20 + 60).toFixed(2), // Random humidity between 60 and 80
+      co: Math.random().toFixed(2), // Random CO value
+      lpg: Math.random().toFixed(2), // Random LPG value
+      smoke: Math.random().toFixed(2), // Random smoke value
+    };
+
+    var temp = (Math.random() * 10 + 20).toFixed(2);
+    var hum = (Math.random() * 20 + 60).toFixed(2);
+
+    let output = "temp=" + temp + ",hum=" + hum +
+      ",light=12;state:ON_BOARD_LED_1=0";
+
+    ws.send(output);
+  }, 1000);
+};
+
 ws.on("open", async () => {
   await extractImages();
   sendImages();
+  sendTemperatureAndHumidity();
 });
 
 ws.on("error", function error(err) {
