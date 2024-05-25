@@ -1,3 +1,4 @@
+const http = require("http");
 const fs = require("fs");
 const ffmpeg = require("ffmpeg");
 const sharp = require("sharp");
@@ -78,10 +79,10 @@ const sendTemperatureAndHumidity = () => {
     }, 1000);
 };
 
-function sendSensorRegistrationData() {
+function getSensorRegistrationData() {
     const randomId = Math.floor(Math.random() * 1000000);
 
-    const sensorData = {
+    let sensorData = {
         [`esp32cam${randomId}`]: {
             "port": 8001,
             "saveSensorData": true,
@@ -94,7 +95,7 @@ function sendSensorRegistrationData() {
         }
     };
 
-    ws.send(JSON.stringify(sensorData));
+    return JSON.stringify(sensorData);
 }
 
 // discovery of master server part
@@ -103,32 +104,49 @@ function sendSensorRegistrationData() {
 //  but right here were just getting the ip from the mf docker compose process of creating all of
 //  the containers and the network
 //  or we're hardcoding it, the answer will surprise you
-function hitMasterIpSoItHitsBack(ip) {
+function hitMasterSoItHitsBack_WithClientIp(masterIp) {
     return new Promise((resolve, reject) => {
-        const client = new net.Socket();
+        const sensorData = getSensorRegistrationData();
 
-        client.connect(8000, ip, () => {
-            client.write('GET /isMaster HTTP/1.1\r\n');
-            client.write(`Host: ${ip}\r\n`);
-            client.write('Connection: close\r\n\r\n');
+        const options = {
+            hostname: masterIp,
+            port: 8000,
+            path: '/isMaster',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': sensorData.length
+            }
+        };
+
+        const req = http.request(options, (res) => {
+            console.log(`statusCode: ${res.statusCode}`);
+
+            res.on('data', (d) => {
+                console.log('Received: ' + d);
+            });
+
+            res.on('end', () => {
+                resolve();
+            });
         });
 
-        client.on('data', (data) => {
-            console.log('Received: ' + data);
-            client.destroy(); // kill client after server's response
+        req.on('error', (error) => {
+            reject(error);
         });
 
-        client.on('close', () => {
-            resolve();
-        });
-
-        client.on('error', (err) => {
-            reject(err);
-        });
+        req.write(sensorData);
+        req.end();
+    }).catch((error) => {
+        if (error.code === 'ECONNREFUSED') {
+            throw new Error('Master server should be running before this mock esp32 streamer!');
+        } else {
+            throw error;
+        }
     });
 }
 
-hitMasterIpSoItHitsBack().then(r => console.log(r)).catch(e => console.error(e));
+hitMasterSoItHitsBack_WithClientIp().then(r => console.log(r)).catch(e => console.error(e));
 
 // part 2: omfg i hit the master server, and now it will send me a separate request with
 //  the ip of the 'client', which is the one that receives the sensor data, and the one
@@ -163,11 +181,6 @@ eventEmitter.on('clientIpDefined', () => {
     ws = new WebSocket(`ws://${clientOfMasterServerIp}:8001`);
 
     ws.on("open", async () => {
-
-        // TODO esto está pendiente, primero tenemos que ver cómo mierda va a encontrar
-        //  el master server el esp32streamer
-        // sendSensorRegistrationData();
-
         await extractImages();
         sendImages();
         sendTemperatureAndHumidity();
